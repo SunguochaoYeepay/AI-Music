@@ -32,6 +32,20 @@ def _run_ffprobe(path: Path) -> dict[str, Any]:
     return json.loads(subprocess.run(command, check=True, capture_output=True, text=True).stdout)
 
 
+def _run_image_probe(path: Path) -> dict[str, Any]:
+    command = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=codec_name,width,height,pix_fmt",
+        "-of",
+        "json",
+        str(path),
+    ]
+    return json.loads(subprocess.run(command, check=True, capture_output=True, text=True).stdout)
+
+
 def _check_wav(path: Path) -> dict[str, Any]:
     streams = _run_ffprobe(path).get("streams", [])
     if not streams:
@@ -54,12 +68,29 @@ def _check_wav(path: Path) -> dict[str, Any]:
     }
 
 
+def _check_artwork(path: Path) -> dict[str, Any]:
+    streams = _run_image_probe(path).get("streams", [])
+    if not streams:
+        raise RuntimeError(f"No image stream found in {path}")
+    stream = streams[0]
+    if stream.get("codec_name") != "mjpeg" or stream.get("width") != 3000 or stream.get("height") != 3000:
+        raise RuntimeError(f"Artwork must be a 3000x3000 JPEG: {stream}")
+    return {
+        "file": path.name,
+        "format": "JPEG",
+        "width": int(stream["width"]),
+        "height": int(stream["height"]),
+        "pixel_format": stream.get("pix_fmt", ""),
+    }
+
+
 def _write_csv(path: Path, metadata: dict[str, Any]) -> None:
     release = metadata["release"]
     track = metadata["track"]
     rights = metadata["rights"]
     row = {
         "audio_file": metadata["audio"]["file"],
+        "artwork_file": metadata["artwork"]["file"],
         "track_title": track["title"],
         "version": track["version"],
         "primary_artist": release["primary_artist"],
@@ -116,6 +147,9 @@ def prepare_release(
     source = song_dir / source_name
     if not source.is_file():
         raise FileNotFoundError(source)
+    cover_source = song_dir / manifest.get("assets", {}).get("cover_png", "cover_1024.png")
+    if not cover_source.is_file():
+        raise FileNotFoundError(cover_source)
 
     output_dir = output_dir or song_dir / "release"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -181,10 +215,41 @@ def prepare_release(
     finally:
         temp_wav.unlink(missing_ok=True)
 
+    cover_name = "cover_3000.jpg"
+    cover_path = output_dir / cover_name
+    temp_cover = output_dir / f".{cover_name}.part"
+    upscale = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(cover_source),
+        "-vf",
+        "scale=3000:3000:flags=lanczos",
+        "-frames:v",
+        "1",
+        "-c:v",
+        "mjpeg",
+        "-q:v",
+        "2",
+        "-pix_fmt",
+        "yuvj444p",
+        "-f",
+        "image2",
+        str(temp_cover),
+    ]
+    try:
+        subprocess.run(upscale, check=True, capture_output=True, text=True)
+        artwork = _check_artwork(temp_cover)
+        artwork["file"] = cover_name
+        temp_cover.replace(cover_path)
+    finally:
+        temp_cover.unlink(missing_ok=True)
+
     metadata = {
         "schema_version": 1,
         "platform": "Apple Music (via distributor)",
         "audio": {"file": wav_name, "format": "WAV", **audio},
+        "artwork": artwork,
         "release": {
             "title": title,
             "primary_artist": artist,
@@ -221,6 +286,7 @@ def prepare_release(
     manifest["release"].update(
         {
             "audio_wav": f"release/{wav_name}",
+            "artwork_jpeg": "release/cover_3000.jpg",
             "metadata_json": "release/release_metadata.json",
             "metadata_csv": "release/release_metadata.csv",
         }

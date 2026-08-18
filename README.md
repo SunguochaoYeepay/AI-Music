@@ -75,7 +75,7 @@ python -m scripts.prepare_release \
   --song-dir resource_library/SONG-YYYYMMDD-001
 ```
 
-脚本会在歌曲目录下生成 `release/audio_apple_24bit.wav`、
+脚本会在歌曲目录下生成 `release/audio_apple_24bit.wav`、`release/cover_3000.jpg`、
 `release/release_metadata.json` 和 `release/release_metadata.csv`，并把常见标签写入 WAV。
 发行商的元数据表仍是权威来源；ISRC、UPC 等编号由发行商分配，脚本不会伪造。
 歌名、艺人、表演者、作曲、作词、制作人和版权信息优先读取 manifest 的 `credits`；
