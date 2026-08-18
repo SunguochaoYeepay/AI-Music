@@ -1,0 +1,10 @@
+{
+  "comfyui_url": "http://127.0.0.1:8188",
+  "feishu": {
+    "cli": "lark-cli",
+    "base_token_env": "FEISHU_BASE_TOKEN",
+    "table_id": ""
+  },
+  "resource_library": "resource_library"
+}
+
