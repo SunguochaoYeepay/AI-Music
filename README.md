@@ -68,6 +68,19 @@ python -m scripts.reconcile_reviews --table-id <table-id> --apply
 `审听结果=废弃/淘汰`（或 `生成状态` 为废弃/淘汰）会删除对应临时目录和飞书记录。
 其他状态保持不变。资源库中已经完整归档的正式资产不会因自动对账被删除。
 
+准备 Apple Music / 发行商上传包：
+
+```bash
+python -m scripts.prepare_release \
+  --song-dir resource_library/SONG-YYYYMMDD-001
+```
+
+脚本会在歌曲目录下生成 `release/audio_apple_24bit.wav`、
+`release/release_metadata.json` 和 `release/release_metadata.csv`，并把常见标签写入 WAV。
+发行商的元数据表仍是权威来源；ISRC、UPC 等编号由发行商分配，脚本不会伪造。
+歌名、艺人、表演者、作曲、作词、制作人和版权信息优先读取 manifest 的 `credits`；
+缺少的作者字段会明确留空，不会擅自把 AI 或用户写成作者。
+
 生成发行包时使用本地资源库中的 FLAC、MP3、封面和 manifest；不会重新依赖 ComfyUI 远端文件。临时目录只有在文件校验成功并完成归档后才会删除。
 
 ## 版权
