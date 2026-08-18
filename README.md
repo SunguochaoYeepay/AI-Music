@@ -57,6 +57,17 @@ python -m scripts.archive_assets \
 python -m scripts.sync_feishu --record record.json --table-id <table-id>
 ```
 
+按审核结果对账（默认只预览）：
+
+```bash
+python -m scripts.reconcile_reviews --table-id <table-id>
+python -m scripts.reconcile_reviews --table-id <table-id> --apply
+```
+
+对账规则：`审听结果=通过` 会校验并归档 `temp/<歌曲ID>/`，然后保留飞书记录；
+`审听结果=废弃/淘汰`（或 `生成状态` 为废弃/淘汰）会删除对应临时目录和飞书记录。
+其他状态保持不变。资源库中已经完整归档的正式资产不会因自动对账被删除。
+
 生成发行包时使用本地资源库中的 FLAC、MP3、封面和 manifest；不会重新依赖 ComfyUI 远端文件。临时目录只有在文件校验成功并完成归档后才会删除。
 
 ## 版权
