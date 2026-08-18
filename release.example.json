@@ -1,0 +1,22 @@
+{
+  "release_title": "发行项目名称",
+  "distributor": "RouteNote",
+  "distributor_status": "In Review",
+  "publication_status": "待发布",
+  "submitted_at": "2026-08-18",
+  "published_at": "",
+  "release_link": "",
+  "target_platforms": [
+    "Apple Music",
+    "Spotify"
+  ],
+  "upc": "",
+  "notes": "",
+  "tracks": [
+    {
+      "song_id": "SONG-YYYYMMDD-001",
+      "isrc": "GXABC2600001",
+      "tags": "AI音乐, 纯音乐"
+    }
+  ]
+}

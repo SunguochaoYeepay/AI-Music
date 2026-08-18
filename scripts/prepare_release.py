@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
 import json
 import subprocess
@@ -13,6 +12,7 @@ from typing import Any
 
 from ai_music_pipeline.manifest import load_manifest, save_manifest
 from ai_music_pipeline.locks import PipelineLock
+from ai_music_pipeline.release_registration import write_release_csv
 
 RELEASE_SCHEMA_VERSION = 2
 
@@ -111,35 +111,6 @@ def _check_artwork(path: Path) -> dict[str, Any]:
     }
 
 
-def _write_csv(path: Path, metadata: dict[str, Any]) -> None:
-    release = metadata["release"]
-    track = metadata["track"]
-    rights = metadata["rights"]
-    row = {
-        "audio_file": metadata["audio"]["file"],
-        "artwork_file": metadata["artwork"]["file"],
-        "track_title": track["title"],
-        "version": track["version"],
-        "primary_artist": release["primary_artist"],
-        "performer": track["performer"],
-        "composer": track["composer"],
-        "lyricist": track["lyricist"],
-        "producer": track["producer"],
-        "genre": release["genre"],
-        "language": release["language"],
-        "explicit": str(release["explicit"]).lower(),
-        "release_date": release["release_date"],
-        "copyright": rights["copyright"],
-        "publisher": rights["publisher"],
-        "isrc": metadata["identifiers"]["isrc"] or "",
-        "upc": metadata["identifiers"]["upc"] or "",
-    }
-    with path.open("w", encoding="utf-8-sig", newline="") as output:
-        writer = csv.DictWriter(output, fieldnames=list(row))
-        writer.writeheader()
-        writer.writerow(row)
-
-
 def prepare_release(
     song_dir: Path,
     *,
@@ -170,6 +141,7 @@ def prepare_release(
     if not isinstance(credits, dict):
         credits = {}
     title = overrides.get("title") or manifest.get("title") or manifest.get("song_id") or song_dir.name
+    release_title = overrides.get("release_title") or manifest.get("release_title") or title
     artist = overrides.get("artist") or manifest.get("artist") or "燧燧"
     performer = overrides.get("performer") or _value(manifest, credits, "performer", artist)
     composer = overrides.get("composer") if overrides.get("composer") is not None else _value(manifest, credits, "composer")
@@ -182,6 +154,8 @@ def prepare_release(
     publisher = overrides.get("publisher") or manifest.get("publisher") or ""
     version = overrides.get("version") or manifest.get("version") or ""
     explicit = bool(overrides.get("explicit", manifest.get("explicit", False)))
+    isrc = overrides.get("isrc") or manifest.get("isrc")
+    upc = overrides.get("upc") or manifest.get("upc")
     ai_attribution = overrides.get("ai_attribution") or manifest.get("ai_attribution") or "MiniMax-Music3"
     source_name = manifest.get("assets", {}).get("master_flac", "audio_master.flac")
     source = song_dir / source_name
@@ -195,6 +169,7 @@ def prepare_release(
     output_dir.mkdir(parents=True, exist_ok=True)
     input_values = {
         "title": title,
+        "release_title": release_title,
         "artist": artist,
         "performer": performer,
         "composer": composer,
@@ -208,6 +183,8 @@ def prepare_release(
         "version": version,
         "explicit": explicit,
         "ai_attribution": ai_attribution,
+        "isrc": isrc,
+        "upc": upc,
     }
     fingerprint = _input_fingerprint(input_values, source, cover_source)
     existing_metadata = output_dir / "release_metadata.json"
@@ -251,7 +228,7 @@ def prepare_release(
         "-metadata",
         f"artist={artist}",
         "-metadata",
-        f"album={title}",
+        f"album={release_title}",
         "-metadata",
         f"album_artist={artist}",
         "-metadata",
@@ -274,6 +251,10 @@ def prepare_release(
         f"description={bext_description}",
         "-metadata",
         f"originator={artist}",
+        "-metadata",
+        f"isrc={isrc or ''}",
+        "-metadata",
+        f"barcode={upc or ''}",
         "-f",
         "wav",
         str(temp_wav),
@@ -324,7 +305,7 @@ def prepare_release(
         "audio": {"file": wav_name, "format": "WAV", **audio},
         "artwork": artwork,
         "release": {
-            "title": title,
+            "title": release_title,
             "primary_artist": artist,
             "genre": genre,
             "language": language,
@@ -344,7 +325,8 @@ def prepare_release(
             "publisher": publisher,
             "license_note": manifest.get("license", ""),
         },
-        "identifiers": {"isrc": manifest.get("isrc"), "upc": manifest.get("upc")},
+        "identifiers": {"isrc": isrc, "upc": upc},
+        "distribution": manifest.get("distribution", {}),
         "rights_review_required": not bool(manifest.get("commercial_allowed")),
         "delivery_notes": [
             "The WAV contains common RIFF metadata, but the distributor's metadata form is authoritative.",
@@ -353,8 +335,8 @@ def prepare_release(
         ],
     }
     metadata_path = output_dir / "release_metadata.json"
-    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    _write_csv(output_dir / "release_metadata.csv", metadata)
+    save_manifest(metadata_path, metadata)
+    write_release_csv(output_dir / "release_metadata.csv", metadata)
 
     manifest.setdefault("release", {})
     manifest["release"].update(
@@ -379,7 +361,24 @@ def main() -> None:
     parser.add_argument("--force", action="store_true", help="Rebuild even when the input fingerprint is unchanged")
     parser.add_argument("--lock-file", type=Path, default=Path(".ai_music_pipeline.lock"))
     parser.add_argument("--no-lock", action="store_true")
-    for name in ("title", "artist", "performer", "composer", "lyricist", "producer", "genre", "language", "release-date", "copyright", "publisher", "version", "ai-attribution"):
+    for name in (
+        "title",
+        "release-title",
+        "artist",
+        "performer",
+        "composer",
+        "lyricist",
+        "producer",
+        "genre",
+        "language",
+        "release-date",
+        "copyright",
+        "publisher",
+        "version",
+        "ai-attribution",
+        "isrc",
+        "upc",
+    ):
         parser.add_argument(f"--{name}", dest=name.replace("-", "_"))
     parser.add_argument("--explicit", action="store_true", default=None)
     args = parser.parse_args()

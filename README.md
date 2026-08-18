@@ -57,6 +57,20 @@ python -m scripts.archive_assets \
 python -m scripts.sync_feishu --record record.json --table-id <table-id>
 ```
 
+发行商提交完成后，把发行项目、状态、日期和每首曲目的 ISRC 填入一份发行清单
+（格式参考 `release.example.json`），先预览再执行：
+
+```bash
+python -m scripts.register_release --release-file temp/release.json
+python -m scripts.register_release --release-file temp/release.json --apply
+```
+
+该流程按 `歌曲ID` 幂等更新，不会重复创建同一首歌；同时回填本地 manifest、
+`release_metadata.json` 和 `release_metadata.csv`。发行商状态变化后，修改同一份清单并重跑即可。
+支持的状态为 `In Review`、`Approved`、`Needs Changes`、`Rejected`。
+`distributor_status` 只表示发行商审核进度；`publication_status` 单独表示平台是否已上线。
+即使发行商显示 `Approved`，在拿到 Apple Music 等平台的正式链接前仍应保持 `待发布`。
+
 按审核结果对账（默认只预览）：
 
 ```bash
