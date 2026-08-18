@@ -7,6 +7,8 @@ __pycache__/
 logs/
 output/
 tmp/
+temp/
+temp-*/
 resource_library/
 *.mp3
 *.flac
@@ -16,4 +18,3 @@ resource_library/
 *.jpeg
 feishu-cli-auth.png
 config.json
-
