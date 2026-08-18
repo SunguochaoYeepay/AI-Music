@@ -40,6 +40,7 @@ cp config.example.json config.json
 
 ```bash
 python -m scripts.comfy_submit --workflow workflow.json --wait --download-dir temp/SONG-YYYYMMDD-001
+```
 
 归档完成后清理临时目录：
 
@@ -48,7 +49,6 @@ python -m scripts.archive_assets \
   --temp-dir temp/SONG-YYYYMMDD-001 \
   --resource-dir resource_library/SONG-YYYYMMDD-001 \
   audio_master.flac audio_320k.mp3 cover_1024.png manifest.json
-```
 ```
 
 将一条歌曲记录写入飞书：
@@ -80,6 +80,16 @@ python -m scripts.prepare_release \
 发行商的元数据表仍是权威来源；ISRC、UPC 等编号由发行商分配，脚本不会伪造。
 歌名、艺人、表演者、作曲、作词、制作人和版权信息优先读取 manifest 的 `credits`；
 缺少的作者字段会明确留空，不会擅自把 AI 或用户写成作者。
+
+`comfy_submit` 会把 prompt 状态写入下载目录的 `comfy_state.json`，重复执行会恢复或复用同一任务；
+默认使用 `.ai_music_pipeline.lock` 防止并发提交。只有明确需要重新生成时才使用 `--force`。
+`prepare_release` 对相同输入会复用已有发行包；需要重建时使用 `--force`。翻唱、非商用或短于 30 秒的内容默认不会进入发行包。
+
+运行安全测试：
+
+```bash
+python3 -m unittest discover -s tests -v
+```
 
 生成发行包时使用本地资源库中的 FLAC、MP3、封面和 manifest；不会重新依赖 ComfyUI 远端文件。临时目录只有在文件校验成功并完成归档后才会删除。
 

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ai_music_pipeline.assets import archive_and_cleanup
+from ai_music_pipeline.locks import PipelineLock
 from ai_music_pipeline.manifest import load_manifest, save_manifest
 
 
@@ -71,6 +72,23 @@ def parse_records(payload: Any) -> list[Record]:
     return records
 
 
+def _pagination_marker(value: Any) -> tuple[bool, str | None]:
+    if isinstance(value, dict):
+        has_more = value.get("has_more", value.get("hasMore"))
+        if has_more is True:
+            return True, str(value.get("page_token") or value.get("pageToken") or value.get("offset") or "")
+        for child in value.values():
+            found, marker = _pagination_marker(child)
+            if found:
+                return found, marker
+    elif isinstance(value, list):
+        for child in value:
+            found, marker = _pagination_marker(child)
+            if found:
+                return found, marker
+    return False, None
+
+
 def _load_cli_json(stdout: str) -> Any:
     """Accept JSON plus harmless CLI notices printed before/after it."""
     text = stdout.strip()
@@ -104,9 +122,18 @@ def list_records(cli: str, base_token: str, table_id: str, records_file: Path | 
         table_id,
         "--format",
         "json",
+        "--limit",
+        "200",
     ]
     result = subprocess.run(command, check=True, capture_output=True, text=True)
-    return parse_records(_load_cli_json(result.stdout))
+    payload = _load_cli_json(result.stdout)
+    has_more, marker = _pagination_marker(payload)
+    if has_more:
+        raise RuntimeError(
+            "Feishu music table has more than one page; refusing to mutate a partial result "
+            f"(next marker: {marker or 'unknown'}). Configure CLI pagination before using --apply."
+        )
+    return parse_records(payload)
 
 
 def _run_update(cli: str, base_token: str, table_id: str, record_id: str, fields: dict[str, Any]) -> None:
@@ -257,13 +284,13 @@ def reconcile(
         if review in REJECTED_VALUES or generation in REJECTED_VALUES:
             actions.append(f"DELETE {song_id}: review={review or '-'} generation={generation or '-'}")
             if apply:
+                _run_delete(cli, base_token, table_id, record.record_id)
                 if temp_dir.is_dir():
-                    # The path is constructed from a single ID below the configured temp root.
-                    temp_dir.resolve().relative_to(temp_root.resolve())
+                    # Delete local rejected work only after the Feishu row is gone.
                     import shutil
 
+                    temp_dir.resolve().relative_to(temp_root.resolve())
                     shutil.rmtree(temp_dir)
-                _run_delete(cli, base_token, table_id, record.record_id)
             continue
 
         actions.append(f"WAIT {song_id}: review={review or '-'} generation={generation or '-'}")
@@ -279,23 +306,32 @@ def main() -> None:
     parser.add_argument("--resource-root", type=Path, default=Path("resource_library"))
     parser.add_argument("--records-file", type=Path, help="Local CLI JSON fixture for testing")
     parser.add_argument("--apply", action="store_true", help="Perform archive/update/delete actions")
+    parser.add_argument("--lock-file", type=Path, default=Path(".ai_music_pipeline.lock"))
+    parser.add_argument("--no-lock", action="store_true")
     args = parser.parse_args()
     if not args.records_file and not args.base_token:
         raise SystemExit("FEISHU_BASE_TOKEN or --base-token is required")
 
-    records = list_records(args.cli, args.base_token or "", args.table_id, args.records_file)
-    actions = reconcile(
-        records,
-        temp_root=args.temp_root,
-        resource_root=args.resource_root,
-        apply=args.apply,
-        cli=args.cli,
-        base_token=args.base_token or "",
-        table_id=args.table_id,
-    )
-    print("\n".join(actions) if actions else "No review records found")
-    if not args.apply:
-        print("DRY-RUN: no local files or Feishu records were changed; pass --apply to execute.")
+    def run() -> None:
+        records = list_records(args.cli, args.base_token or "", args.table_id, args.records_file)
+        actions = reconcile(
+            records,
+            temp_root=args.temp_root,
+            resource_root=args.resource_root,
+            apply=args.apply,
+            cli=args.cli,
+            base_token=args.base_token or "",
+            table_id=args.table_id,
+        )
+        print("\n".join(actions) if actions else "No review records found")
+        if not args.apply:
+            print("DRY-RUN: no local files or Feishu records were changed; pass --apply to execute.")
+
+    if args.no_lock:
+        run()
+    else:
+        with PipelineLock(args.lock_file):
+            run()
 
 
 if __name__ == "__main__":
