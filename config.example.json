@@ -2,9 +2,11 @@
   "comfyui_url": "http://127.0.0.1:8188",
   "feishu": {
     "cli": "lark-cli",
+    "base_token": "",
     "base_url": "https://example.feishu.cn/wiki/<wiki-token>",
     "music_table_id": "",
-    "release_table_id": ""
+    "release_table_id": "",
+    "video_table_id": ""
   },
   "resource_library": "resource_library"
 }

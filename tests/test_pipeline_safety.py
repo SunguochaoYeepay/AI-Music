@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from ai_music_pipeline.assets import archive_and_cleanup
+from ai_music_pipeline.classification import classify_manifest
 from ai_music_pipeline.locks import PipelineLock
 from ai_music_pipeline.manifest import load_manifest, save_manifest
 from ai_music_pipeline.release_registration import (
@@ -13,12 +14,50 @@ from ai_music_pipeline.release_registration import (
     publication_status,
     update_local_release,
 )
+from ai_music_pipeline.video_workflow import build_h3_workflow, choose_preset, get_preset, h3_prompt
 from scripts.comfy_submit import _safe_output_path
 from scripts.prepare_release import prepare_release
+from scripts.prepare_video import _resolve_asset
 from scripts.reconcile_reviews import _pagination_marker, parse_records
+from scripts.reconcile_reviews import Record
+from scripts.run_video_automation import approved_records
 
 
 class PipelineSafetyTests(unittest.TestCase):
+    def test_video_queue_only_accepts_approved_reviews(self) -> None:
+        records = [
+            Record("one", {"歌曲ID": "S1", "审听结果": ["通过"]}),
+            Record("two", {"歌曲ID": "S2", "审听结果": ["需修改"]}),
+            Record("three", {"歌曲ID": "S3", "审听结果": ["淘汰"]}),
+        ]
+        self.assertEqual([record.record_id for record in approved_records(records)], ["one"])
+
+    def test_h3_workflow_uses_approved_loop_settings(self) -> None:
+        preset = choose_preset({"歌曲标题": "城市晚风·霓虹回程"})
+        workflow = build_h3_workflow("SONG-1", "inputs/keyframe.png", preset)
+        self.assertEqual(preset.name, "neon_city")
+        self.assertEqual(workflow["11"]["inputs"]["steps"], 8)
+        self.assertEqual(workflow["8"]["inputs"]["length"], 294)
+        self.assertEqual(workflow["8"]["inputs"]["first_frame"], workflow["8"]["inputs"]["last_frame"])
+        prompt = h3_prompt(preset)
+        self.assertIn("integrated_multimodal_description:", prompt)
+        self.assertIn("overall_soundscape: N/A", prompt)
+        self.assertIn("non_diegetic_music: N/A", prompt)
+        self.assertEqual(get_preset("mountain_pavilion").name, "mountain_pavilion")
+        with self.assertRaises(ValueError):
+            get_preset("missing")
+
+    def test_classification_preserves_explicit_scenes(self) -> None:
+        self.assertEqual(
+            classify_manifest({"usage_scenes": ["睡前/助眠", "unknown"]}),
+            ["睡前/助眠"],
+        )
+
+    def test_classification_infers_from_caption(self) -> None:
+        scenes = classify_manifest({"caption_summary": "quiet rainy window for late-night reading and sleep"})
+        self.assertIn("睡前/助眠", scenes)
+        self.assertIn("阅读/咖啡馆", scenes)
+
     def test_archive_verifies_before_removing_temp(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)
@@ -63,6 +102,16 @@ class PipelineSafetyTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(RuntimeError, "cover/non-commercial"):
                 prepare_release(song_dir)
+
+    def test_video_asset_resolution_stays_inside_song_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            song_dir = Path(root) / "SONG-1"
+            song_dir.mkdir()
+            video = song_dir / "loop.mp4"
+            video.write_bytes(b"video")
+            self.assertEqual(_resolve_asset(song_dir, {"assets": {"video_loop_source": "loop.mp4"}}, "video_loop_source", "fallback.mp4"), video.resolve())
+            with self.assertRaises(FileNotFoundError):
+                _resolve_asset(song_dir, {"assets": {"video_loop_source": "../loop.mp4"}}, "video_loop_source", "fallback.mp4")
 
     def test_release_registration_validates_and_builds_fields(self) -> None:
         with tempfile.TemporaryDirectory() as root:

@@ -65,6 +65,30 @@ def parse_records(payload: Any) -> list[Record]:
     """Parse both raw API data and lark-cli JSON envelopes."""
     seen: set[str] = set()
     records: list[Record] = []
+
+    # ``lark-cli base +record-list`` currently returns a tabular envelope:
+    # ``data.data`` contains rows, while ``data.fields`` contains the matching
+    # field names and ``data.record_id_list`` contains row IDs.  Normalize this
+    # shape before falling back to the standard record-object walker.
+    table = payload.get("data") if isinstance(payload, dict) else None
+    if isinstance(table, dict):
+        rows = table.get("data")
+        field_names = table.get("fields")
+        record_ids = table.get("record_id_list")
+        if isinstance(rows, list) and isinstance(field_names, list) and isinstance(record_ids, list):
+            for record_id, row in zip(record_ids, rows):
+                if not record_id or not isinstance(row, list):
+                    continue
+                fields = {
+                    str(name): value
+                    for name, value in zip(field_names, row)
+                    if name is not None
+                }
+                record = Record(str(record_id), fields)
+                if record.record_id not in seen:
+                    seen.add(record.record_id)
+                    records.append(record)
+
     for record in _walk_records(payload):
         if record.record_id not in seen:
             seen.add(record.record_id)

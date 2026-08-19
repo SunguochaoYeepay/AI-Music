@@ -82,6 +82,14 @@ python -m scripts.reconcile_reviews --table-id <table-id> --apply
 `审听结果=废弃/淘汰`（或 `生成状态` 为废弃/淘汰）会删除对应临时目录和飞书记录。
 其他状态保持不变。资源库中已经完整归档的正式资产不会因自动对账被删除。
 
+按使用场景分类资源库歌曲：
+
+```bash
+python -m scripts.classify_library --sync-feishu --apply
+```
+
+分类字段“使用场景”支持多选，当前选项为：睡前/助眠、跑步/运动、通勤/坐车、学习/专注、工作/办公、冥想/放松、阅读/咖啡馆、旅行/风景、短视频BGM、聚会/氛围。“音乐方向”继续表示曲风；新歌的 `manifest.json` 用 `usage_scenes` 保存场景，显式标签优先于关键词推断。
+
 准备 Apple Music / 发行商上传包：
 
 ```bash
@@ -106,6 +114,45 @@ python3 -m unittest discover -s tests -v
 ```
 
 生成发行包时使用本地资源库中的 FLAC、MP3、封面和 manifest；不会重新依赖 ComfyUI 远端文件。临时目录只有在文件校验成功并完成归档后才会删除。
+
+生成新媒体全曲视频：
+
+```bash
+python -m scripts.prepare_video \
+  --song-dir resource_library/SONG-YYYYMMDD-001 \
+  --source resource_library/SONG-YYYYMMDD-001/video_loop_source_864x480.mp4
+```
+
+脚本会把循环源片段自动铺满歌曲时长，接入本地 `audio_320k.mp3`，输出
+`video_music_1920x1080.mp4`，并把视频信息写回歌曲的 `manifest.json`。输出采用临时文件
+完成后原子替换，避免中断留下损坏的 MP4；需要重建时使用 `--force`。竖版或方形版本
+使用 `--width 1080 --height 1920` 或 `--width 1080 --height 1080`。
+
+飞书 Base 中的“新媒体视频”表单独管理视频版本和各平台发布状态；同一首歌可以有多条
+横版、竖版、短版记录，不与“发布数据表”的流媒体发行状态混在一起。
+
+按飞书审听结果自动生产视频：
+
+```bash
+python -m scripts.run_video_automation --config config.json
+python -m scripts.run_video_automation --config config.json --apply
+```
+
+第一条只预览队列；第二条执行完整流程。仅 `审听结果=通过` 且缺少有效 1080p 成品的歌曲
+会进入队列。流程使用 Flux 生成 1344×768 电影感关键帧，再通过 MiniMax H3 官方 FL2VA
+提示词结构、首尾同帧和 8-step Turbo 生成约 12.25 秒循环源，最后接入本地原曲并登记
+“新媒体视频”表。ComfyUI 离线时会写入等待状态并在下一次调度重试；已完成歌曲按本地
+文件校验和飞书歌曲 ID 幂等跳过。
+
+明确需要重做某一首已有视频时，必须同时指定歌曲，避免误伤整个资源库：
+
+```bash
+python -m scripts.run_video_automation --config config.json \
+  --song-id SONG-YYYYMMDD-001 --preset mountain_pavilion --force --apply
+```
+
+macOS 定时配置在 `launchd/cn.sunguochao.ai-music-video.plist`。主任务每天 10:30 运行，
+12:30、15:30、19:30、22:30 只负责补偿重试；没有待处理歌曲时立即退出。
 
 ## 版权
 
