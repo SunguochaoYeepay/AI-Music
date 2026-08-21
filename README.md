@@ -28,6 +28,9 @@ temp/                     生成和转码中间文件（被 Git 忽略，成功�
 - ComfyUI API 地址
 - 已授权的 `lark-cli`（个人飞书身份）
 
+家里 Windows 电脑接管项目时，请从 [docs/HOME_WINDOWS_HANDOFF.md](docs/HOME_WINDOWS_HANDOFF.md) 开始；
+每日 Codex 任务使用 [docs/DAILY_AUTOMATION_PROMPT_TEMPLATE.md](docs/DAILY_AUTOMATION_PROMPT_TEMPLATE.md)。
+
 复制配置模板后按本机环境修改：
 
 ```bash
