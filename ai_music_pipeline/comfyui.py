@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import time
+import uuid
 from urllib.error import HTTPError, URLError
 from pathlib import Path
 from typing import Any
@@ -44,6 +46,69 @@ class ComfyUIClient:
         if not prompt_id:
             raise ComfyUIError(f"Missing prompt_id in response: {result}")
         return prompt_id
+
+    def is_available(self) -> bool:
+        try:
+            result = self._request("GET", "/queue")
+            return isinstance(result, dict)
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError):
+            return False
+
+    def upload_input(
+        self,
+        source: Path,
+        *,
+        filename: str | None = None,
+        subfolder: str = "ai_music_pipeline",
+        overwrite: bool = True,
+    ) -> str:
+        """Upload an input asset and return the LoadImage-compatible name."""
+        if not source.is_file():
+            raise FileNotFoundError(source)
+        remote_name = filename or source.name
+        if Path(remote_name).name != remote_name or ".." in Path(subfolder).parts:
+            raise ValueError("Unsafe ComfyUI upload path")
+
+        boundary = f"----ai-music-{uuid.uuid4().hex}"
+        content_type = mimetypes.guess_type(remote_name)[0] or "application/octet-stream"
+        chunks: list[bytes] = []
+
+        def add_field(name: str, value: str) -> None:
+            chunks.extend(
+                [
+                    f"--{boundary}\r\n".encode(),
+                    f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
+                    value.encode(),
+                    b"\r\n",
+                ]
+            )
+
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode(),
+                (
+                    f'Content-Disposition: form-data; name="image"; filename="{remote_name}"\r\n'
+                    f"Content-Type: {content_type}\r\n\r\n"
+                ).encode(),
+                source.read_bytes(),
+                b"\r\n",
+            ]
+        )
+        add_field("type", "input")
+        add_field("subfolder", subfolder)
+        add_field("overwrite", "true" if overwrite else "false")
+        chunks.append(f"--{boundary}--\r\n".encode())
+        request = Request(
+            f"{self.base_url}/upload/image",
+            data=b"".join(chunks),
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
+        with urlopen(request, timeout=self.timeout) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        name = str(result.get("name") or remote_name)
+        folder = str(result.get("subfolder") or subfolder).strip("/\\")
+        return f"{folder}/{name}" if folder else name
 
     def wait_for_success(self, prompt_id: str, poll_seconds: int = 5, timeout_seconds: int = 1800) -> dict[str, Any]:
         deadline = time.monotonic() + timeout_seconds

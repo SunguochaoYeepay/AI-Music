@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>cn.sunguochao.ai-music-video</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/sunguochao/Documents/DeeSeek/bin/python3</string>
+    <string>-m</string>
+    <string>scripts.run_video_automation</string>
+    <string>--config</string>
+    <string>/Users/sunguochao/Documents/1 音频/AI-音乐/config.json</string>
+    <string>--apply</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/sunguochao/Documents/1 音频/AI-音乐</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/sunguochao/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/sunguochao/Documents/1 音频/AI-音乐/logs/video-automation.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/sunguochao/Documents/1 音频/AI-音乐/logs/video-automation-error.log</string>
+</dict>
+</plist>
